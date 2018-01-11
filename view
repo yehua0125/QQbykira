@@ -1,0 +1,155 @@
+/**
+ * 这是服务器端的控制界面，可以完成启动服务器，关闭服务器
+ * 可以管理和监控用户
+ */
+package com.qq.server.view;
+import java.awt.*;
+import java.awt.event.*;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+
+import javax.swing.*;
+
+import com.qq.common.Message;
+import com.qq.common.MessageType;
+import com.qq.server.model.*;
+import com.qq.server.*;
+
+public class MyServerFrame extends JFrame implements ActionListener{
+	MyQqServer mqs=null;
+	QQSQLModel qqsl=null;
+	JPanel jp1,jp2;
+	JButton jb1,jb2,jb3,jb4;
+	JTable jtb1;
+	ManageQqSql mq;
+	JScrollPane jsp;
+	
+	public static void main(String[] args) {
+		// TODO Auto-generated method stub
+		MyServerFrame msf=new MyServerFrame();
+	}
+	public MyServerFrame()
+	{
+		jp1=new JPanel();
+		jb1=new JButton("启动服务器");
+		jb1.addActionListener(this);
+		jb2=new JButton("关闭服务器");
+		jb2.addActionListener(this);
+		jp1.add(jb1);
+		jp1.add(jb2);
+		
+		jp2=new JPanel();
+		jb3=new JButton("强制下线");
+		jb3.addActionListener(this);
+		jb4=new JButton("修改密码");
+		jb4.addActionListener(this);
+		
+		jp2.add(jb3);
+		jp2.add(jb4);
+		
+		jtb1=new JTable();
+		jsp=new JScrollPane(jtb1);
+		
+		this.add(jp1,"North");
+		this.add(jp2,"South");
+		this.add(jsp,"Center");
+		
+		this.setSize(500,400);
+		this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		this.setVisible(true);
+	}
+	@Override
+	public void actionPerformed(ActionEvent e) {
+		// TODO Auto-generated method stub
+		
+		if(e.getSource()==jb1)
+		{
+			//开启服务器
+			//清除在线人员（目前的方式）
+			qqsl=new QQSQLModel();
+			qqsl.clrOnline();
+			mq=new ManageQqSql();
+			mq.AllQuery();
+			jtb1.setModel(mq);
+			mqs=new MyQqServer();
+		}else if(e.getSource()==jb2)
+		{
+			//关闭服务器
+			String userNum=ManageClientThread.getAllOnLineUserid();
+			String friends[]=userNum.split(" ");
+			for(int i=0;i<friends.length;i++)
+			{
+				System.out.println("在线的好友是："+friends[i]);
+			}
+			if(userNum.equals(""))
+			{
+				mqs.endQqServer();
+			}else
+			{
+				//客户端没有完全关闭就弹出下面的这个窗口
+				new JOptionPane().showMessageDialog(this, "关闭所有客户端");
+			}
+		}else if(e.getSource()==jb3){
+			//强制下线 1 通知message_xiaxian 2 关闭客户端对应的FriendList 3 修改数据库中的在线状态
+			int rowNum= this.jtb1.getSelectedRow();
+			if(rowNum==-1){
+				JOptionPane.showMessageDialog(this, "请选择一行");
+				return ;
+			}
+				
+			//找到了对应的qqid
+			String qqid=((String) mq.getValueAt(rowNum, 0)).trim();
+			String OnFlag=((String) mq.getValueAt(rowNum, 2)).trim();
+			//对应的数据库状态置零，通知客户端关闭对应的好友列表 并且移除在map中的添加值，
+			//客户端也需要清除map中的值
+			if(OnFlag.equals("0")){
+				JOptionPane.showMessageDialog(this, "该用户不在线");
+				return;
+			}
+			
+			//数据库置零 ，服务器关闭对应的线程（移除）
+			//客户端 关闭对应的好友列表，并移除线程（通过发送messageType）
+			//调用强制对象
+			qqsl.BeDown(qqid);//数据库状态置零
+			
+			Message m=new Message();
+			
+			m.setMesType(MessageType.message_setdown);//发送强制关闭信息到客户端
+			m.setGetter(qqid);
+			try {
+				ObjectOutputStream oos=new ObjectOutputStream
+						(ManageClientThread.getcliClientThread(qqid).getS().getOutputStream());
+				oos.writeObject(m);
+			} catch (IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			ManageClientThread.removeClientThread(qqid);//移除服务器对应连接线程
+			
+			mq=new ManageQqSql();
+			mq.AllQuery();
+			jtb1.setModel(mq);
+			
+		}else if(e.getSource()==jb4){
+			//修改密码 直接修改数据库中的选中账号的密码
+			//这个地方有bug
+			int rowNum = this.jtb1.getSelectedRow();
+			
+			if(rowNum==-1){
+				JOptionPane.showMessageDialog(this, "请选择一行");
+				return;
+			}
+
+			//得到行数了
+			//进入修改密码的界面
+			UpDateQqPasswd udqp=new UpDateQqPasswd(this,"修改密码",true,mq,rowNum);
+			
+			mq=new ManageQqSql();
+			mq.AllQuery();
+			jtb1.setModel(mq);
+			
+		}
+		
+	}
+
+}
